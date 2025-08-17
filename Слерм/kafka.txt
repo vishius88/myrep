@@ -1,0 +1,96 @@
+KAFKA
+# Топ команды
+# kafka-topics
+/srv/kafka/bin/kafka-topics.sh --bootstrap-server ${hostname -s}:9093 --command-config /srv/kafka/config/admin.properties
+
+# Список топиков:
+--list
+
+# Посмотреть сколько у топиков партиций, где лидер партиции и на каком брокере реплика:
+--describe --topic fsms-audit-event
+
+# Создание топика:
+--create --topic fsms-audit-event --partitions 3 --replication-factor 3
+
+# Удаление топика:
+--delete --topic fsms-audit-event
+
+# Изменение топика:
+--alter --topic fsms-audit-event --partitions 6
+
+# Проверка состояния репликации (смотри параметр ISR (In-Sync Replicas отображается те брокеры(и сам лидер) которые догнали мастера)):
+--describe
+
+Topic: fsms-notification   TopicId: D5xkHEMTpMSvStxrMjXjBg   PartitionCount: 16   ReplicationFactor: 3   Configs:
+    Topic: fsms-notification   Partition: 12   Leader: 1001   Replicas: 1002,1003,1001   Isr: 1002,1003,1001
+    Topic: fsms-notification   Partition: 0    Leader: 1002   Replicas: 1001,1002,1003   Isr: 1002,1003,1001
+    Topic: fsms-notification   Partition: 1    Leader: 1001   Replicas: 1001,1003,1002   Isr: 1002,1003,1001
+
+# kafka-console-producer
+# Запустить продюсера:
+/srv/kafka/bin/kafka-console-producer.sh --bootstrap-server ${hostname -s}:9093 --command-config /srv/kafka/config/admin.properties --topic fsms-audit-event
+
+# kafka-console-consumer
+/srv/kafka/bin/kafka-console-consumer.sh --bootstrap-server ${hostname -s}:9093 --command-config /srv/kafka/config/admin.properties
+    --topic fsms-audit-event --from-beginning
+# Подписаться с указанием consumer group:
+--topic fsms-audit-event --group my_group
+
+# kafka-consumer-groups
+/srv/kafka/bin/kafka-consumer-groups.sh --bootstrap-server ${hostname -s}:9093 --command-config /srv/kafka/config/admin.properties --list
+--describe --group fsms-audit-event
+
+GROUP                     TOPIC                           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG  CONSUMER-ID  HOST            CLIENT-ID
+fsms-audit-event          fsms-information-security-events  1        3400            3400            0    consumer-fsms-audit-event-1-5f3fd38d-0 /172.19.186.146 consumer-fsms-audit-event-1
+
+# Сброс смещений на начало (когда нужно перечитать сообщения с начала или синхронизировать консумер с продюсером)
+/srv/kafka/bin/kafka-consumer-groups.sh --bootstrap-server ${hostname -s}:9093 --command-config /srv/kafka/config/admin.properties --group fsms-audit-event --topic fsms-information-security-events --reset-offsets --to-earliest --execute
+
+# Переназначить партиции
+/srv/kafka/bin/kafka-reassign-partitions.sh --bootstrap-server ${hostname -s}:9093 --command-config /srv/kafka/config/admin.properties
+
+# Создать json файл с разметкой партиций
+# Проверить результат миграции
+--reassignment-json-file reassignment.json --verify
+
+# Проверка здоровья брокеров:
+/srv/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server ${hostname -s}:9093 --command-config /srv/kafka/config/admin.properties
+
+# Производительность:
+/srv/kafka/bin/kafka-consumer-groups.sh --bootstrap-server ${hostname -s}:9093 --command-config /srv/kafka/config/admin.properties --describe --group fsms-notification
+
+GROUP             TOPIC               PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG  CONSUMER-ID                                                                     HOST           CLIENT-ID
+fsms-notification fsms-notification   12         3               3               0    consumer-fsms-notification-1-1abe43ca-c90d-4131-8de4-1de4561ae9d0             /172.19.186.146 consumer-fsms-notification-1
+fsms-notification fsms-notification   15         1               1               0    consumer-fsms-notification-1-1abe43ca-c90d-4131-8de4-1de4561ae9d0             /172.19.186.146 consumer-fsms-notification-1
+
+CURRENT-OFFSET - где сейчас стоит consumer group
+LOG-END-OFFSET - сколько сообщений в партиции всего
+LAG - сколько сообщений еще не обработано
+
+# kafka-acl
+/srv/kafka/bin/kafka-acls.sh --bootstrap-server ${hostname -s}:9093 --command-config /srv/kafka/config/admin.properties --list
+
+# Выдать права для продюсера:
+--add --allow-principal "User=CN=tst,OU=O,L=ST,C=" --producer --topic fsms-information-security-events --operation Write
+
+# Выдать права для консюмера:
+--add --allow-principal "User=CN=tst,OU=DSIT,O=L,ST=C=" --consumer --group consumer_user --topic fsms-information-security-events --operation Read
+
+# Возможные операции: --remove для удаления ACL
+# Возможные права: read, write, create, delete, alter, describe, clusteraction, all
+
+# kafka-run-class
+# Посмотреть лаг по партиции (у меня не работает команда)
+KAFKA_OPTS="-Djava.security.auth.login.config=/srv/kafka/config/consumer.properties"
+/srv/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list ${hostname -s}:9093 --topic fsms-audit-event --time -1
+
+# kafka-replica-verification (у меня не работает команда)
+/srv/kafka/bin/kafka-replica-verification.sh --broker-list ${hostname -s}:9093 --report-interval-ms 5000
+
+# Полезное почитать:
+https://habr.com/ru/articles/706892/
+https://inaword.ru/security/kafka-chast-8-autentifikatsiya-i-avtorizatsiya-s-acl/
+https://habr.com/ru/companies/mws/articles/718154/
+Прочитать про параметры топиков типа retention и т.д.
+
+###############################################################################################################
